@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from marshmallow import ValidationError
 from info import *
 from utils import get_settings, save_group_settings
+from episode_order import episode_sort_key, is_episode_query, order_episode_page
 from datetime import datetime, timedelta
 import asyncio
 
@@ -493,6 +494,24 @@ async def get_search_results(
 
         if next_offset >= total_results:
             next_offset = ""
+
+    page_has_episodes = any(episode_sort_key(file)[0] == 0 for file in files)
+    if max_results and (is_episode_query(query) or page_has_episodes):
+        try:
+            ordered_files, too_many_files = await get_all_search_results(
+                chat_id,
+                query,
+                file_type=file_type,
+                max_results=5000,
+            )
+            if not too_many_files:
+                files, next_offset, total_results = order_episode_page(
+                    ordered_files,
+                    offset,
+                    max_results,
+                )
+        except Exception:
+            logger.exception("Could not apply global episode ordering")
 
     return files, next_offset, total_results
 
