@@ -106,7 +106,7 @@ STAR_PREMIUM_PLANS = {
 # MongoDB Configuration
 # ============================
 
-DATABASE_URI = environ.get('DATABASE_URI', 'mongodb+srv://mongodbpy_db_user:pPgtRKyHsm8GvJF2@cluster0.u2ft5ps.mongodb.net/?appName=Cluster0')
+DATABASE_URI = environ.get('DATABASE_URI', 'mongodb+srv://rendamd1_db_user:M7vb8ZD9rx0AfHnP@cluster0.uzqvib6.mongodb.net/?appName=Cluster0')
 DATABASE_NAME = environ.get('DATABASE_NAME', 'Cluster0')
 COLLECTION_NAME = environ.get('COLLECTION_NAME', 'royal_files')
 
