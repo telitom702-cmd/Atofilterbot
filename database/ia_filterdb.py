@@ -495,14 +495,15 @@ async def get_search_results(
         if next_offset >= total_results:
             next_offset = ""
 
+    is_explicit_episode_query = is_episode_query(query)
     page_has_episodes = any(episode_sort_key(file)[0] == 0 for file in files)
-    if max_results and (is_episode_query(query) or page_has_episodes):
+    if max_results and (is_explicit_episode_query or page_has_episodes):
         try:
             ordered_files, too_many_files = await get_all_search_results(
                 chat_id,
                 query,
                 file_type=file_type,
-                max_results=5000,
+                max_results=None if is_explicit_episode_query else 5000,
             )
             if not too_many_files:
                 files, next_offset, total_results = order_episode_page(
@@ -531,15 +532,16 @@ async def get_all_search_results(
     if MULTIPLE_DB:
         sources.append(Media2)
 
-    results = await asyncio.gather(
-        *(
-            source.find(filter_mongo)
-            .limit(max_results + 1)
-            .to_list(length=max_results + 1)
-            for source in sources
-        )
-    )
+    async def fetch_source(source):
+        cursor = source.find(filter_mongo)
+        if max_results is None:
+            return await cursor.to_list(length=None)
+        return await cursor.limit(max_results + 1).to_list(length=max_results + 1)
+
+    results = await asyncio.gather(*(fetch_source(source) for source in sources))
     files = [file for source_results in results for file in source_results]
+    if max_results is None:
+        return files, False
     return files[:max_results], len(files) > max_results
 
 
