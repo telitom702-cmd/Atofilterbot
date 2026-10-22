@@ -302,6 +302,53 @@ async def save_file(media):
 # Search Results
 # ---------------------------------------------------------
 
+def _build_search_filter(query, file_type=None):
+    if isinstance(query, list):
+        raw_pattern = "|".join(
+            re.escape(item.strip())
+            for item in query
+            if item and item.strip()
+        )
+        if not raw_pattern:
+            return None
+        regex_list = [re.compile(raw_pattern, re.IGNORECASE)]
+        if USE_CAPTION_FILTER:
+            filter_mongo = {
+                "$or": (
+                    [{"file_name": regex} for regex in regex_list]
+                    + [{"caption": regex} for regex in regex_list]
+                )
+            }
+        else:
+            filter_mongo = {"$or": [{"file_name": regex} for regex in regex_list]}
+    else:
+        query = (query or "").strip()
+        if not query:
+            return None
+
+        words = [re.escape(word) for word in query.split()]
+        raw_pattern = r".*".join(words)
+        try:
+            regex = re.compile(raw_pattern, flags=re.IGNORECASE)
+        except re.error:
+            return None
+
+        if USE_CAPTION_FILTER:
+            filter_mongo = {
+                "$or": [
+                    {"file_name": regex},
+                    {"caption": regex},
+                ]
+            }
+        else:
+            filter_mongo = {"file_name": regex}
+
+    if file_type:
+        filter_mongo["file_type"] = file_type
+
+    return filter_mongo
+
+
 async def get_search_results(
     chat_id,
     query,
@@ -341,88 +388,9 @@ async def get_search_results(
     # List Query
     # -----------------------------------------------------
 
-    if isinstance(query, list):
-
-        raw_pattern = "|".join(
-            re.escape(q.strip())
-            for q in query
-            if q.strip()
-        )
-
-        regex_list = (
-            [re.compile(raw_pattern, re.IGNORECASE)]
-            if raw_pattern
-            else []
-        )
-
-        if USE_CAPTION_FILTER:
-            filter_mongo = {
-                "$or": (
-                    [{"file_name": r} for r in regex_list]
-                    + [{"caption": r} for r in regex_list]
-                )
-            }
-
-        else:
-            filter_mongo = {
-                "$or": [
-                    {"file_name": r}
-                    for r in regex_list
-                ]
-            }
-
-    # -----------------------------------------------------
-    # String Query
-    # -----------------------------------------------------
-
-    else:
-
-        query = query.strip()
-
-        if not query:
-            return [], None, 0
-
-        if " " in query:
-
-            words = [
-                re.escape(word)
-                for word in query.split()
-            ]
-
-            raw_pattern = r".*".join(words)
-
-        else:
-
-            raw_pattern = re.escape(query)
-
-        try:
-            regex = re.compile(
-                raw_pattern,
-                flags=re.IGNORECASE
-            )
-
-        except re.error:
-            return [], None, 0
-
-        if USE_CAPTION_FILTER:
-            filter_mongo = {
-                "$or": [
-                    {"file_name": regex},
-                    {"caption": regex}
-                ]
-            }
-
-        else:
-            filter_mongo = {
-                "file_name": regex
-            }
-
-    # -----------------------------------------------------
-    # File Type Filter
-    # -----------------------------------------------------
-
-    if file_type:
-        filter_mongo["file_type"] = file_type
+    filter_mongo = _build_search_filter(query, file_type=file_type)
+    if filter_mongo is None:
+        return [], None, 0
 
     # -----------------------------------------------------
     # Ultra Fast Mode
@@ -527,6 +495,33 @@ async def get_search_results(
             next_offset = ""
 
     return files, next_offset, total_results
+
+
+async def get_all_search_results(
+    chat_id,
+    query,
+    file_type=None,
+    max_results=1000,
+):
+    """Fetch every matching file for the All send action, up to a safe cap."""
+    filter_mongo = _build_search_filter(query, file_type=file_type)
+    if filter_mongo is None:
+        return [], False
+
+    sources = [Media]
+    if MULTIPLE_DB:
+        sources.append(Media2)
+
+    results = await asyncio.gather(
+        *(
+            source.find(filter_mongo)
+            .limit(max_results + 1)
+            .to_list(length=max_results + 1)
+            for source in sources
+        )
+    )
+    files = [file for source_results in results for file in source_results]
+    return files[:max_results], len(files) > max_results
 
 
 # ---------------------------------------------------------

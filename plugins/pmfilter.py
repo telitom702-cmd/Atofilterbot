@@ -32,6 +32,7 @@ TIMEZONE = "Asia/Kolkata"
 BUTTON = {}
 BUTTONS = {}
 FRESH = {}
+ALL_SEND_QUERIES = {}
 BUTTONS0 = {}
 BUTTONS1 = {}
 BUTTONS2 = {}
@@ -196,7 +197,9 @@ async def next_page(bot, query):
                        InlineKeyboardButton(
                            "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                        InlineKeyboardButton(
-                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                       InlineKeyboardButton(
+                           "All send", callback_data=f"allsend#{key}")
 
                    ]
                    )
@@ -216,7 +219,8 @@ async def next_page(bot, query):
         btn.insert(0, [
             InlineKeyboardButton(
                 "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
-            InlineKeyboardButton("Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+            InlineKeyboardButton("Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+            InlineKeyboardButton("All send", callback_data=f"allsend#{key}")
         ])
     if ULTRA_FAST_MODE:
         if 0 < offset <= 10:
@@ -444,6 +448,7 @@ async def filter_qualities_cb_handler(client: Client, query: CallbackQuery):
     if qual != "homepage":
         search = f"{search} {qual}"
     BUTTONS[key] = search
+    ALL_SEND_QUERIES[key] = search
     files, offset, total_results = await get_search_results(chat_id, search, offset=0, filter=True)
     if not files:
         await query.answer("🚫 ɴᴏ ꜰɪʟᴇꜱ ᴡᴇʀᴇ ꜰᴏᴜɴᴅ 🚫", show_alert=1)
@@ -473,7 +478,9 @@ async def filter_qualities_cb_handler(client: Client, query: CallbackQuery):
                        InlineKeyboardButton(
                            "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                        InlineKeyboardButton(
-                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                       InlineKeyboardButton(
+                           "All send", callback_data=f"allsend#{key}")
                    ])
     else:
         btn = []
@@ -492,7 +499,9 @@ async def filter_qualities_cb_handler(client: Client, query: CallbackQuery):
                        InlineKeyboardButton(
                            "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                        InlineKeyboardButton(
-                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                       InlineKeyboardButton(
+                           "All send", callback_data=f"allsend#{key}")
 
                    ])
     if offset != "":
@@ -603,6 +612,7 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
     if lang != "homepage":
         search = f"{search} {lang}"
     BUTTONS[key] = search
+    ALL_SEND_QUERIES[key] = search
     files, offset, total_results = await get_search_results(chat_id, search, offset=0, filter=True)
     if not files:
         await query.answer("🚫 ɴᴏ ꜰɪʟᴇꜱ ᴡᴇʀᴇ ꜰᴏᴜɴᴅ 🚫", show_alert=1)
@@ -632,7 +642,9 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
                        InlineKeyboardButton(
                            "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                        InlineKeyboardButton(
-                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                       InlineKeyboardButton(
+                           "All send", callback_data=f"allsend#{key}")
                    ]
                    )
     else:
@@ -651,7 +663,9 @@ async def filter_languages_cb_handler(client: Client, query: CallbackQuery):
                        InlineKeyboardButton(
                            "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                        InlineKeyboardButton(
-                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                           "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                       InlineKeyboardButton(
+                           "All send", callback_data=f"allsend#{key}")
                    ])
     if offset != "":
         try:
@@ -744,6 +758,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
         search_final = query_input[0] if query_input else search
 
     BUTTONS[key] = search_final
+    ALL_SEND_QUERIES[key] = query_input
     try:
         if int(query.from_user.id) not in [query.message.reply_to_message.from_user.id, 0]:
             return await query.answer("⚠️ Not your request", show_alert=True)
@@ -787,6 +802,7 @@ async def filter_seasons_cb_handler(client: Client, query: CallbackQuery):
             InlineKeyboardButton(
                 "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
             InlineKeyboardButton("Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+            InlineKeyboardButton("All send", callback_data=f"allsend#{key}"),
         ],
     )
     if n_offset != "":
@@ -906,6 +922,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
         except Exception as e:
             logger.exception(e)
             await query.answer(url=f"https://telegram.me/{temp.U_NAME}?start=sendfiles4_{key}")
+
+    elif query.data.startswith("allsend"):
+        _, key = query.data.split("#", 1)
+        await query.answer(
+            url=f"https://t.me/{temp.U_NAME}?start=allsend_{query.message.chat.id}_{key}"
+        )
 
     elif query.data.startswith("del"):
         ident, file_id = query.data.split("#")
@@ -1827,6 +1849,7 @@ async def auto_filter(client, msg, spoll=False):
 
         key = f"{message.chat.id}-{message.id}"
         FRESH[key] = search
+        ALL_SEND_QUERIES[key] = search
         temp.GETALL[key] = files
         temp.SHORT[message.from_user.id] = message.chat.id
 
@@ -1853,7 +1876,9 @@ async def auto_filter(client, msg, spoll=False):
                            InlineKeyboardButton(
                                "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                            InlineKeyboardButton(
-                               "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                               "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                           InlineKeyboardButton(
+                               "All send", callback_data=f"allsend#{key}")
 
                        ])
         else:
@@ -1873,7 +1898,9 @@ async def auto_filter(client, msg, spoll=False):
                            InlineKeyboardButton(
                                "ʀᴇᴍᴏᴠᴇ ᴀᴅs", url=f"https://t.me/{temp.U_NAME}?start=premium"),
                            InlineKeyboardButton(
-                               "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}")
+                               "Sᴇɴᴅ Aʟʟ", callback_data=f"sendfiles#{key}"),
+                           InlineKeyboardButton(
+                               "All send", callback_data=f"allsend#{key}")
                        ])
 
         if offset != "":

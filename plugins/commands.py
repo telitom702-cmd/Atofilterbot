@@ -7,7 +7,7 @@ import random
 import asyncio
 import string
 import pytz
-from .pmfilter import auto_filter 
+from .pmfilter import auto_filter, ALL_SEND_QUERIES
 from Script import script
 from datetime import datetime
 from database.refer import referdb
@@ -15,7 +15,7 @@ from database.config_db import mdb
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyKeyboardMarkup
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, ChatAdminRequired, UserNotParticipant
-from database.ia_filterdb import Media, Media2, get_file_details, unpack_new_file_id, get_bad_files
+from database.ia_filterdb import Media, Media2, get_file_details, get_all_search_results, unpack_new_file_id, get_bad_files
 from database.users_chats_db import db
 from info import *
 from utils import get_settings, save_group_settings, is_subscribed, is_req_subscribed, get_size, get_shortlink, is_check_admin, temp, get_readable_time, get_time, generate_settings_text, log_error, clean_filename
@@ -28,6 +28,44 @@ logger = logging.getLogger(__name__)
 
 TIMEZONE = "Asia/Kolkata"
 BATCH_FILES = {}
+ALL_SEND_LIMIT = 1000
+
+_SEASON_EPISODE_RE = re.compile(
+    r"\bS(?:eason)?\s*0*(\d{1,2})[\s._-]*E(?:p(?:isode)?)?\s*0*(\d{1,3})"
+    r"(?:\s*(?:-|to)\s*E?(?:p(?:isode)?)?\s*0*(\d{1,3}))?\b",
+    re.IGNORECASE,
+)
+_SEASON_X_EPISODE_RE = re.compile(
+    r"\b0*(\d{1,2})\s*x\s*0*(\d{1,3})(?:\s*(?:-|to)\s*0*(\d{1,3}))?\b",
+    re.IGNORECASE,
+)
+_EPISODE_ONLY_RE = re.compile(
+    r"\b(?:EP(?:ISODE)?|E)\s*0*(\d{1,3})"
+    r"(?:\s*(?:-|to)\s*(?:E(?:P(?:ISODE)?)?\s*)?0*(\d{1,3}))?\b",
+    re.IGNORECASE,
+)
+
+
+def episode_sort_key(file):
+    """Sort a file by numeric season/episode, not by upload or string order."""
+    filename = getattr(file, "file_name", "") or ""
+    caption = getattr(file, "caption", "") or ""
+    text = f"{filename}\n{caption}"
+
+    for pattern in (_SEASON_EPISODE_RE, _SEASON_X_EPISODE_RE):
+        match = pattern.search(text)
+        if match:
+            season, episode = int(match.group(1)), int(match.group(2))
+            episode_end = int(match.group(3) or episode)
+            return (0, season, episode, episode_end, filename.casefold())
+
+    match = _EPISODE_ONLY_RE.search(text)
+    if match:
+        episode = int(match.group(1))
+        episode_end = int(match.group(2) or episode)
+        return (0, 1, episode, episode_end, filename.casefold())
+
+    return (1, 0, 0, 0, filename.casefold())
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
@@ -63,7 +101,11 @@ async def start(client, message):
         else:
             msg = script.SECOND_VERIFY_COMPLETE_TEXT if key == "second_time_verified" else script.VERIFY_COMPLETE_TEXT
         if message.command[1].startswith('sendall'):
-            verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
+            if file_id.startswith("allsend_"):
+                _, all_grp_id, search_key = file_id.split("_", 2)
+                verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=allsend_{all_grp_id}_{search_key}"
+            else:
+                verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=allfiles_{grp_id}_{file_id}"
         else:
             verifiedfiles = f"https://telegram.me/{temp.U_NAME}?start=file_{grp_id}_{file_id}"
         await client.send_message(settings['log'], script.VERIFIED_LOG_TEXT.format(m.from_user.mention, user_id, datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %B %Y'), num))
@@ -283,7 +325,14 @@ async def start(client, message):
                 verify_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
                 await db.create_verify_id(user_id, verify_id)
                 temp.VERIFICATIONS[user_id] = grp_id
-                if message.command[1].startswith('allfiles'):
+                if message.command[1].startswith('allsend'):
+                    verify = await get_shortlink(
+                        f"https://telegram.me/{temp.U_NAME}?start=sendall_{user_id}_{verify_id}_allsend_{grp_id}_{file_id}",
+                        grp_id,
+                        is_second_shortener,
+                        is_third_shortener,
+                    )
+                elif message.command[1].startswith('allfiles'):
                     verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=sendall_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
                 else:
                     verify = await get_shortlink(f"https://telegram.me/{temp.U_NAME}?start=notcopy_{user_id}_{verify_id}_{file_id}", grp_id, is_second_shortener, is_third_shortener)
@@ -318,11 +367,30 @@ async def start(client, message):
     # Now, await the file details task
     files_ = await file_details_task
 
-    if data.startswith("allfiles"):
+    if data.startswith(("allfiles", "allsend")):
         try:
-            files = temp.GETALL.get(file_id)
+            if data.startswith("allsend"):
+                search_query = ALL_SEND_QUERIES.get(file_id)
+                if search_query is None:
+                    return await message.reply_text(
+                        "এই সার্চটি পুরোনো হয়ে গেছে। গ্রুপে আবার সার্চ করে All send চাপুন।"
+                    )
+                files, too_many_files = await get_all_search_results(
+                    int(grp_id),
+                    search_query,
+                    max_results=ALL_SEND_LIMIT,
+                )
+                if too_many_files:
+                    return await message.reply_text(
+                        f"একবারে সর্বোচ্চ {ALL_SEND_LIMIT}টি ফাইল পাঠানো যায়। "
+                        "নির্দিষ্ট সিজন বেছে নিয়ে আবার All send চাপুন।"
+                    )
+            else:
+                files = temp.GETALL.get(file_id)
+
             if not files:
                 return await message.reply('<b><i>ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !</b></i>')
+            files.sort(key=episode_sort_key)
             filesarr = []
             for file in files:
                 file_id = file.file_id
@@ -364,13 +432,23 @@ async def start(client, message):
                         ]
                 else:
                     btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-                msg = await client.send_cached_media(
-                    chat_id=message.from_user.id,
-                    file_id=file_id,
-                    caption=f_caption,
-                    protect_content=settings.get('file_secure', PROTECT_CONTENT),
-                    reply_markup=InlineKeyboardMarkup(btn)
-                )
+                try:
+                    msg = await client.send_cached_media(
+                        chat_id=message.from_user.id,
+                        file_id=file_id,
+                        caption=f_caption,
+                        protect_content=settings.get('file_secure', PROTECT_CONTENT),
+                        reply_markup=InlineKeyboardMarkup(btn)
+                    )
+                except FloodWait as e:
+                    await asyncio.sleep(e.value)
+                    msg = await client.send_cached_media(
+                        chat_id=message.from_user.id,
+                        file_id=file_id,
+                        caption=f_caption,
+                        protect_content=settings.get('file_secure', PROTECT_CONTENT),
+                        reply_markup=InlineKeyboardMarkup(btn)
+                    )
                 filesarr.append(msg)
             k = await client.send_message(chat_id=message.from_user.id, text=script.DEL_MSG.format(get_time(DELETE_TIME)), parse_mode=enums.ParseMode.HTML)
             await asyncio.sleep(DELETE_TIME)
