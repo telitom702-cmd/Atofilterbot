@@ -356,9 +356,25 @@ async def start(client, message):
                 return await message.reply('<b><i>ɴᴏ ꜱᴜᴄʜ ꜰɪʟᴇ ᴇxɪꜱᴛꜱ !</b></i>')
             files.sort(key=episode_sort_key)
             filesarr = []
+            failed_count = 0
             for file in files:
                 file_id = file.file_id
-                files_ = await get_file_details(file_id)
+                try:
+                    files_ = await get_file_details(file_id)
+                except Exception:
+                    failed_count += 1
+                    logger.exception(
+                        "Failed to load batch file record for '%s'",
+                        getattr(file, "file_name", "unknown file")
+                    )
+                    continue
+                if not files_:
+                    failed_count += 1
+                    logger.warning(
+                        "Skipping batch file '%s': database record not found",
+                        getattr(file, "file_name", "unknown file")
+                    )
+                    continue
                 files1 = files_[0]
                 title = clean_filename(files1.file_name)
                 size = get_size(files1.file_size)
@@ -396,10 +412,13 @@ async def start(client, message):
                         ]
                 else:
                     btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
+                send_file_id = (
+                    getattr(files1, "send_file_id", None) or file_id
+                )
                 try:
                     msg = await client.send_cached_media(
                         chat_id=message.from_user.id,
-                        file_id=file_id,
+                        file_id=send_file_id,
                         caption=f_caption,
                         protect_content=settings.get('file_secure', PROTECT_CONTENT),
                         reply_markup=InlineKeyboardMarkup(btn)
@@ -408,13 +427,31 @@ async def start(client, message):
                     await asyncio.sleep(e.value)
                     msg = await client.send_cached_media(
                         chat_id=message.from_user.id,
-                        file_id=file_id,
+                        file_id=send_file_id,
                         caption=f_caption,
                         protect_content=settings.get('file_secure', PROTECT_CONTENT),
                         reply_markup=InlineKeyboardMarkup(btn)
                     )
+                except Exception:
+                    failed_count += 1
+                    logger.exception(
+                        "Failed to send batch file '%s'",
+                        getattr(files1, "file_name", "unknown file")
+                    )
+                    continue
                 filesarr.append(msg)
-            k = await client.send_message(chat_id=message.from_user.id, text=script.DEL_MSG.format(get_time(DELETE_TIME)), parse_mode=enums.ParseMode.HTML)
+            if not filesarr:
+                return await message.reply_text(
+                    f"কোনো ফাইল পাঠানো যায়নি। ব্যর্থ ফাইল: {failed_count}। "
+                    "অ্যাডমিনকে /logs পরীক্ষা করতে বলুন।"
+                )
+            status_text = script.DEL_MSG.format(get_time(DELETE_TIME))
+            if failed_count:
+                status_text += (
+                    f"\n\n✅ পাঠানো হয়েছে: {len(filesarr)}"
+                    f"\n⚠️ পাঠানো যায়নি: {failed_count}"
+                )
+            k = await client.send_message(chat_id=message.from_user.id, text=status_text, parse_mode=enums.ParseMode.HTML)
             await asyncio.sleep(DELETE_TIME)
             for x in filesarr:
                 await x.delete()
@@ -516,13 +553,22 @@ async def start(client, message):
             ]
     else:
         btn = [[InlineKeyboardButton('📌 ᴊᴏɪɴ ᴜᴘᴅᴀᴛᴇꜱ ᴄʜᴀɴɴᴇʟ 📌', url=UPDATE_CHNL_LNK)]]
-    msg = await client.send_cached_media(
-        chat_id=message.from_user.id,
-        file_id=file_id,
-        caption=f_caption,
-        protect_content=settings.get('file_secure', PROTECT_CONTENT),
-        reply_markup=InlineKeyboardMarkup(btn)
-    )
+    send_file_id = getattr(files, "send_file_id", None) or file_id
+    try:
+        msg = await client.send_cached_media(
+            chat_id=message.from_user.id,
+            file_id=send_file_id,
+            caption=f_caption,
+            protect_content=settings.get('file_secure', PROTECT_CONTENT),
+            reply_markup=InlineKeyboardMarkup(btn)
+        )
+    except Exception:
+        logger.exception(
+            "Failed to send file '%s' to user %s", files.file_name, user
+        )
+        return await message.reply_text(
+            "এই ফাইলটি পাঠানো যায়নি। পরে আবার চেষ্টা করুন বা অ্যাডমিনকে /logs দিন।"
+        )
     k = await msg.reply(script.DEL_MSG.format(get_time(DELETE_TIME)),
         quote=True, parse_mode=enums.ParseMode.HTML
     )     

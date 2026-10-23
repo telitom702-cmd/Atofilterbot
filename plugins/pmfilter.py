@@ -1421,7 +1421,15 @@ async def cb_handler(client: Client, query: CallbackQuery):
         try:
             user_id = query.from_user.id
             username = query.from_user.mention
-            log_msg = await client.send_cached_media(chat_id=BIN_CHANNEL, file_id=file_id,)
+            file_details = await get_file_details(file_id)
+            send_file_id = (
+                getattr(file_details[0], "send_file_id", None)
+                if file_details else None
+            ) or file_id
+            log_msg = await client.send_cached_media(
+                chat_id=BIN_CHANNEL,
+                file_id=send_file_id,
+            )
             fileName = {quote_plus(get_name(log_msg))}
             dreamx_stream = f"{URL}watch/{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
             dreamx_download = f"{URL}{str(log_msg.id)}/{quote_plus(get_name(log_msg))}?hash={get_hash(log_msg)}"
@@ -1448,9 +1456,12 @@ async def cb_handler(client: Client, query: CallbackQuery):
             await asyncio.sleep(DELETE_TIME)
             await dreamcinezone.delete()
             return
-        except Exception as e:
-            print(e)
-            await query.answer(f"⚠️ SOMETHING WENT WRONG STREAM LINK  \n\n{e}", show_alert=True)
+        except Exception:
+            logger.exception("Failed to create stream link for a file")
+            await query.answer(
+                "⚠️ Stream link could not be created. Please try again later.",
+                show_alert=True
+            )
             return
 
 
