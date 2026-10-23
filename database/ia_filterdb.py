@@ -52,6 +52,7 @@ instance2 = Instance.from_db(db2)
 class Media(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
+    send_file_id = fields.StrField(allow_none=True)
     file_name = fields.StrField(required=True)
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
@@ -71,6 +72,7 @@ class Media(Document):
 class Media2(Document):
     file_id = fields.StrField(attribute="_id")
     file_ref = fields.StrField(allow_none=True)
+    send_file_id = fields.StrField(allow_none=True)
     file_name = fields.StrField(required=True)
     file_size = fields.IntField(required=True)
     file_type = fields.StrField(allow_none=True)
@@ -211,20 +213,38 @@ async def save_file(media):
     saveMedia = Media
     target_db = "Primary"
 
-    if MULTIPLE_DB:
-        try:
-            exists = await Media.count_documents(
+    # A stable, normalized file_id is used as the database key. Refresh the
+    # sendable ID and file reference whenever the same media is indexed again.
+    models_to_check = [Media, Media2] if MULTIPLE_DB else [Media]
+    try:
+        for existing_model in models_to_check:
+            exists = await existing_model.count_documents(
                 {"file_id": file_id},
                 limit=1
             )
-
             if exists:
+                await existing_model.collection.update_one(
+                    {"_id": file_id},
+                    {
+                        "$set": {
+                            "file_ref": file_ref,
+                            "send_file_id": media.file_id,
+                        }
+                    }
+                )
                 logger.info(
-                    f"[SKIP] '{file_name}' "
-                    f"already in Primary DB."
+                    f"[REFRESH] Updated Telegram file reference for "
+                    f"'{file_name}'."
                 )
                 return False, 0
+    except Exception:
+        logger.exception(
+            f"[ERROR] Could not check or refresh existing file '{file_name}'."
+        )
+        return False, 3
 
+    if MULTIPLE_DB:
+        try:
             primary_db_size = await check_db_size(db)
 
             if primary_db_size >= 407:
@@ -251,6 +271,7 @@ async def save_file(media):
         record = saveMedia(
             file_id=file_id,
             file_ref=file_ref,
+            send_file_id=media.file_id,
             file_name=file_name,
             file_size=media.file_size,
             file_type=media.file_type,
@@ -278,9 +299,20 @@ async def save_file(media):
         await record.commit()
 
     except DuplicateKeyError:
+        # Another indexing worker may have inserted this record after the
+        # preflight check; refresh its current Telegram file ID as well.
+        await saveMedia.collection.update_one(
+            {"_id": file_id},
+            {
+                "$set": {
+                    "file_ref": file_ref,
+                    "send_file_id": media.file_id,
+                }
+            }
+        )
         logger.info(
-            f"[SKIP] DuplicateKey: "
-            f"'{file_name}' already exists in {target_db} DB."
+            f"[REFRESH] Updated Telegram file reference for "
+            f"'{file_name}' in {target_db} DB."
         )
         return False, 0
 
