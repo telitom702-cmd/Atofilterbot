@@ -50,9 +50,36 @@ def is_episode_query(query):
     return bool(_EPISODE_QUERY_RE.search(text))
 
 
+def dedupe_media_files(files):
+    """Remove repeated records while preserving same-name files with different sizes."""
+    unique_files = []
+    seen_keys = set()
+
+    for file in files:
+        file_id = str(getattr(file, "file_id", "") or "").strip()
+        file_name = " ".join(
+            (getattr(file, "file_name", "") or "").split()
+        ).casefold()
+        file_size = getattr(file, "file_size", None)
+
+        keys = []
+        if file_id:
+            keys.append(("file_id", file_id))
+        if file_name:
+            keys.append(("file_name_and_size", file_name, file_size))
+
+        if any(key in seen_keys for key in keys):
+            continue
+
+        unique_files.append(file)
+        seen_keys.update(keys)
+
+    return unique_files
+
+
 def order_episode_page(files, offset, page_size):
-    """Sort the complete result set, then return one stable page."""
-    ordered = sorted(files, key=episode_sort_key)
+    """Deduplicate and sort the complete result set, then return one stable page."""
+    ordered = sorted(dedupe_media_files(files), key=episode_sort_key)
     page_offset = max(0, int(offset or 0))
     page = ordered[page_offset:page_offset + page_size]
     next_offset = (

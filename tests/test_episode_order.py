@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from episode_order import is_episode_query, order_episode_page
+from episode_order import dedupe_media_files, is_episode_query, order_episode_page
 
 
 class EpisodeOrderTests(unittest.TestCase):
@@ -32,6 +32,40 @@ class EpisodeOrderTests(unittest.TestCase):
         self.assertTrue(is_episode_query("Show Season 1"))
         self.assertTrue(is_episode_query(["Show S01", "Show season 1"]))
         self.assertFalse(is_episode_query("A movie title"))
+
+    def test_duplicate_filename_and_size_are_removed_before_pagination(self):
+        filename = "City Of Romance S01E05 540p HEVC AMZN WEB DL Hindi C mkv"
+        files = [
+            SimpleNamespace(
+                file_id="file-a",
+                file_name=filename,
+                file_size=1500,
+                caption="",
+            ),
+            SimpleNamespace(
+                file_id="file-b",
+                file_name=f"  {filename.upper()}  ",
+                file_size=1500,
+                caption="",
+            ),
+        ]
+
+        page, next_offset, total = order_episode_page(files, 0, 10)
+
+        self.assertEqual(len(page), 1)
+        self.assertEqual(page[0].file_id, "file-a")
+        self.assertEqual((next_offset, total), ("", 1))
+
+    def test_same_filename_with_different_sizes_is_preserved(self):
+        filename = "City Of Romance S01E05 540p HEVC AMZN WEB DL Hindi C mkv"
+        files = [
+            SimpleNamespace(file_id="file-a", file_name=filename, file_size=1500, caption=""),
+            SimpleNamespace(file_id="file-b", file_name=filename, file_size=2000, caption=""),
+        ]
+
+        unique_files = dedupe_media_files(files)
+
+        self.assertEqual([file.file_id for file in unique_files], ["file-a", "file-b"])
 
 
 if __name__ == "__main__":
