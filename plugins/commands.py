@@ -16,6 +16,7 @@ from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, 
 from pyrogram import Client, filters, enums
 from pyrogram.errors import FloodWait, ChatAdminRequired, UserNotParticipant
 from database.ia_filterdb import Media, Media2, get_file_details, get_all_search_results, unpack_new_file_id, get_bad_files
+from episode_order import episode_sort_key
 from database.users_chats_db import db
 from info import *
 from utils import get_settings, save_group_settings, is_subscribed, is_req_subscribed, get_size, get_shortlink, is_check_admin, temp, get_readable_time, get_time, generate_settings_text, log_error, clean_filename
@@ -29,43 +30,6 @@ logger = logging.getLogger(__name__)
 TIMEZONE = "Asia/Kolkata"
 BATCH_FILES = {}
 ALL_SEND_LIMIT = 1000
-
-_SEASON_EPISODE_RE = re.compile(
-    r"\bS(?:eason)?\s*0*(\d{1,2})[\s._-]*E(?:p(?:isode)?)?\s*0*(\d{1,3})"
-    r"(?:\s*(?:-|to)\s*E?(?:p(?:isode)?)?\s*0*(\d{1,3}))?\b",
-    re.IGNORECASE,
-)
-_SEASON_X_EPISODE_RE = re.compile(
-    r"\b0*(\d{1,2})\s*x\s*0*(\d{1,3})(?:\s*(?:-|to)\s*0*(\d{1,3}))?\b",
-    re.IGNORECASE,
-)
-_EPISODE_ONLY_RE = re.compile(
-    r"\b(?:EP(?:ISODE)?|E)\s*0*(\d{1,3})"
-    r"(?:\s*(?:-|to)\s*(?:E(?:P(?:ISODE)?)?\s*)?0*(\d{1,3}))?\b",
-    re.IGNORECASE,
-)
-
-
-def episode_sort_key(file):
-    """Sort a file by numeric season/episode, not by upload or string order."""
-    filename = getattr(file, "file_name", "") or ""
-    caption = getattr(file, "caption", "") or ""
-    text = f"{filename}\n{caption}"
-
-    for pattern in (_SEASON_EPISODE_RE, _SEASON_X_EPISODE_RE):
-        match = pattern.search(text)
-        if match:
-            season, episode = int(match.group(1)), int(match.group(2))
-            episode_end = int(match.group(3) or episode)
-            return (0, season, episode, episode_end, filename.casefold())
-
-    match = _EPISODE_ONLY_RE.search(text)
-    if match:
-        episode = int(match.group(1))
-        episode_end = int(match.group(2) or episode)
-        return (0, 1, episode, episode_end, filename.casefold())
-
-    return (1, 0, 0, 0, filename.casefold())
 
 @Client.on_message(filters.command("start") & filters.incoming)
 async def start(client, message):
